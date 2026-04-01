@@ -1,0 +1,10 @@
+# IM-TRACE dependencies
+pyyaml>=6.0
+
+# Optional: for API-based model evaluation and auto-grading
+# anthropic>=0.40.0
+# openai>=1.50.0
+
+# Optional: for statistical analysis
+# scipy>=1.11.0
+# numpy>=1.24.0

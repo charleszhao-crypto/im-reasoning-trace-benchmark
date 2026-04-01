@@ -1,0 +1,76 @@
+# IM-TRACE Model Configuration
+# Models to benchmark against the four-rubric evaluation system
+
+models:
+  gpt-4o:
+    provider: openai
+    model_id: gpt-4o
+    max_tokens: 4000
+    temperature: 0.3
+    system_prompt: |
+      You are a board-certified internal medicine physician. Answer clinical
+      questions with the depth and rigor expected of an attending physician.
+      Include your differential diagnosis, reasoning, and management plan.
+      Acknowledge uncertainty where appropriate.
+
+  claude-sonnet:
+    provider: anthropic
+    model_id: claude-sonnet-4-6
+    max_tokens: 4000
+    temperature: 0.3
+    system_prompt: |
+      You are a board-certified internal medicine physician. Answer clinical
+      questions with the depth and rigor expected of an attending physician.
+      Include your differential diagnosis, reasoning, and management plan.
+      Acknowledge uncertainty where appropriate.
+
+  o3-mini:
+    provider: openai
+    model_id: o3-mini
+    max_tokens: 4000
+    temperature: 0.3
+    system_prompt: |
+      You are a board-certified internal medicine physician. Answer clinical
+      questions with the depth and rigor expected of an attending physician.
+      Include your differential diagnosis, reasoning, and management plan.
+      Acknowledge uncertainty where appropriate.
+
+  gemini-pro:
+    provider: google
+    model_id: gemini-2.5-pro
+    max_tokens: 4000
+    temperature: 0.3
+    system_prompt: |
+      You are a board-certified internal medicine physician. Answer clinical
+      questions with the depth and rigor expected of an attending physician.
+      Include your differential diagnosis, reasoning, and management plan.
+      Acknowledge uncertainty where appropriate.
+
+# Evaluation settings
+evaluation:
+  grading_model: claude-sonnet-4-6  # Model used for auto-grading
+  cases_dir: data/corpus/
+  output_dir: analysis/
+  modes:
+    - static_qa      # Mode 1: Single question → response → score
+    # - multi_turn    # Mode 2: Multi-turn dialogue (future)
+    # - ambient_doc   # Mode 3: Encounter → SOAP note (future)
+
+# Clinical prompt template for generating model responses
+clinical_prompt: |
+  ## Clinical Case
+
+  {case_stem}
+
+  ## Instructions
+
+  As an internal medicine physician, provide your assessment of this case.
+  Include:
+  1. Your differential diagnosis, ranked by probability
+  2. Your reasoning for each diagnosis on the differential
+  3. Recommended workup (labs, imaging, procedures)
+  4. Initial management plan
+  5. Any safety considerations or red flags
+  6. What you are uncertain about and why
+
+  Be specific and detailed. Show your clinical reasoning, not just your conclusions.
