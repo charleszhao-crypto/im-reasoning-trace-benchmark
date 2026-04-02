@@ -380,16 +380,106 @@ def detect_hard_cases(
             criteria_fired.append("safety_critical_flag")
 
         if criteria_fired:
+            # Frontier-set governance fields
+            governance = _compute_governance_fields(
+                case_id, criteria_fired, details, annotations
+            )
+
             hard_cases.append({
                 "case_id":        case_id,
                 "criteria_fired": criteria_fired,
                 "severity_score": len(criteria_fired),
                 "details":        details,
+                **governance,
             })
 
     # Sort by severity descending, then case_id for determinism
     hard_cases.sort(key=lambda x: (-x["severity_score"], x["case_id"]))
     return hard_cases
+
+
+def _compute_governance_fields(
+    case_id: str,
+    criteria_fired: list[str],
+    details: dict,
+    annotations: list[dict],
+) -> dict:
+    """
+    Compute frontier-set governance fields for a hard case.
+
+    Returns:
+      disagreement_score: 0-1 normalized disagreement intensity
+      judge_confidence_penalty: 0-1 penalty from low-confidence annotations
+      ranking_leverage: 0 or 1 from LOO
+      safety_weight: 0 or 1 from safety flag
+      recommended_action: one of send_to_human, promote_to_frontier_set,
+                          holdout_candidate, needs_rubric_revision
+    """
+    # Disagreement score (0-1)
+    disagreement_score = 0.0
+    hld = details.get("human_vs_llm_disagreement", {})
+    if hld.get("delta"):
+        # Normalize: delta of 3.0+ maps to 1.0
+        disagreement_score = min(hld["delta"] / 3.0, 1.0)
+
+    # Judge confidence penalty
+    judge_confidence_penalty = 0.0
+    ljc = details.get("low_judge_confidence", {})
+    if ljc.get("total_flagged", 0) > 0:
+        judge_confidence_penalty = min(ljc["total_flagged"] / len(annotations), 1.0) if annotations else 0.0
+
+    # Ranking leverage (binary from LOO)
+    ranking_leverage = 1.0 if "high_ranking_leverage" in criteria_fired else 0.0
+
+    # Safety weight (binary from safety flag)
+    safety_weight = 1.0 if "safety_critical_flag" in criteria_fired else 0.0
+
+    # Perturbation instability (placeholder — requires perturbation data)
+    perturbation_instability = None
+
+    # Conditional rank divergence (placeholder — requires stratified ranking data)
+    conditional_rank_divergence = None
+
+    # Recommended action
+    recommended_action = _recommend_action(
+        criteria_fired, safety_weight, disagreement_score,
+        judge_confidence_penalty, ranking_leverage,
+    )
+
+    return {
+        "disagreement_score": round(disagreement_score, 3),
+        "judge_confidence_penalty": round(judge_confidence_penalty, 3),
+        "ranking_leverage": ranking_leverage,
+        "safety_weight": safety_weight,
+        "perturbation_instability": perturbation_instability,
+        "conditional_rank_divergence": conditional_rank_divergence,
+        "recommended_action": recommended_action,
+    }
+
+
+def _recommend_action(
+    criteria_fired: list[str],
+    safety_weight: float,
+    disagreement_score: float,
+    judge_confidence_penalty: float,
+    ranking_leverage: float,
+) -> str:
+    """
+    Determine recommended action for a hard case.
+
+    Priority order:
+      1. Safety-critical + high disagreement → send_to_human
+      2. High judge confidence penalty → needs_rubric_revision
+      3. High ranking leverage → holdout_candidate
+      4. Default hard case → promote_to_frontier_set
+    """
+    if safety_weight > 0 and disagreement_score > 0.3:
+        return "send_to_human"
+    if judge_confidence_penalty > 0.5:
+        return "needs_rubric_revision"
+    if ranking_leverage > 0:
+        return "holdout_candidate"
+    return "promote_to_frontier_set"
 
 
 # ── Export ────────────────────────────────────────────────────────────────────

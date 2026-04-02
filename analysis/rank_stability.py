@@ -274,14 +274,21 @@ def run_rank_stability_analysis(
     loo = leave_one_case_out(all_scores)
     fragility = compute_fragility_summary(rank_dist, sup_matrix, loo)
 
+    # Decision tiers
+    models = sorted(rank_dist.keys())
+    top3 = top_k_frequency(rank_dist, k=3)
+    decision_tiers = _assign_decision_tiers(rank_dist, sup_matrix, fragility)
+
     result = {
         "n_bootstrap": n_bootstrap,
         "seed": seed,
         "rank_distributions": rank_dist,
         "top1_frequency": top1,
+        "top3_frequency": top3,
         "pairwise_superiority_matrix": sup_matrix,
         "leave_one_case_out": loo,
         "fragility_summary": fragility,
+        "decision_tiers": decision_tiers,
     }
 
     if output_path:
@@ -290,3 +297,56 @@ def run_rank_stability_analysis(
             json.dump(result, f, indent=2)
 
     return result
+
+
+# ── Decision Tiers ──────────────────────────────────────────────────────────
+
+def _assign_decision_tiers(
+    rank_dist: dict[str, dict[int, float]],
+    superiority_matrix: dict[str, dict[str, float]],
+    fragility: dict,
+) -> dict[str, dict]:
+    """
+    Assign decision-oriented tiers to each model.
+
+    Tiers:
+      - "leader": P(top-1) > 0.7 AND min P(A>B) > 0.6
+      - "co_leader": P(top-1) > 0.3 AND not clearly dominated
+      - "top_cluster": P(top-3) > 0.7 but not a leader
+      - "mid_pack": not clearly in top cluster or bottom
+      - "below_frontier": P(top-3) < 0.2
+    """
+    models = sorted(rank_dist.keys())
+    top1 = top_k_frequency(rank_dist, k=1)
+    top3 = top_k_frequency(rank_dist, k=3)
+
+    tiers = {}
+    for m in models:
+        p_top1 = top1.get(m, 0)
+        p_top3 = top3.get(m, 0)
+
+        # Check minimum superiority vs all others
+        min_sup = 1.0
+        if m in superiority_matrix:
+            for other, prob in superiority_matrix[m].items():
+                min_sup = min(min_sup, prob)
+
+        if p_top1 > 0.7 and min_sup > 0.6:
+            tier = "leader"
+        elif p_top1 > 0.3:
+            tier = "co_leader"
+        elif p_top3 > 0.7:
+            tier = "top_cluster"
+        elif p_top3 < 0.2:
+            tier = "below_frontier"
+        else:
+            tier = "mid_pack"
+
+        tiers[m] = {
+            "tier": tier,
+            "top1_probability": round(p_top1, 3),
+            "top3_probability": round(p_top3, 3),
+            "min_superiority": round(min_sup, 3),
+        }
+
+    return tiers
