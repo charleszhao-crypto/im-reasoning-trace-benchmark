@@ -130,6 +130,12 @@ class ModelResponse(BaseModel):
     system_prompt_hash: Optional[str] = None    # For reproducibility
     generated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
+    # Telemetry (provider-agnostic; populated by adapters when available)
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    estimated_cost_usd: Optional[float] = None  # Adapter-computed if pricing known
+
 
 # ── Reasoning Trace Schema (Structured R4 Input) ────────────────────────────
 

@@ -257,7 +257,7 @@ def fit_bradley_terry(
     # Initialize strengths
     strength = {m: 1.0 for m in models}
 
-    # Count wins
+    # Count wins per model and matchup pairs
     wins = defaultdict(int)
     matchups = defaultdict(int)
     for c in comparisons:
@@ -265,14 +265,21 @@ def fit_bradley_terry(
         matchups[(c["winner"], c["loser"])] += 1
         matchups[(c["loser"], c["winner"])] += 1
 
-    # Iterative MLE
+    # Add Laplace smoothing: every model gets 0.5 virtual wins against every other
+    # Prevents zero-strength degeneracy when a model has zero observed wins
+    virtual_wins = 0.5
+    for m in models:
+        wins[m] += virtual_wins * (len(models) - 1)
+        for other in models:
+            if other != m:
+                matchups[(m, other)] += virtual_wins
+
+    # Iterative MLE (Zermelo algorithm with smoothing)
     for iteration in range(max_iter):
         old_strength = dict(strength)
 
         for m in models:
-            numerator = sum(
-                1 for c in comparisons if c["winner"] == m
-            )
+            numerator = wins[m]
             denominator = 0.0
             for other in models:
                 if other == m:
@@ -284,10 +291,14 @@ def fit_bradley_terry(
             if denominator > 0:
                 strength[m] = numerator / denominator
 
-        # Normalize (fix one model's strength to prevent drift)
-        total = sum(strength.values())
-        for m in models:
-            strength[m] /= total / len(models)
+        # Normalize (geometric mean = 1 to prevent drift)
+        geo_mean = 1.0
+        for s in strength.values():
+            geo_mean *= max(s, 1e-15)
+        geo_mean = geo_mean ** (1.0 / len(models))
+        if geo_mean > 0:
+            for m in models:
+                strength[m] /= geo_mean
 
         # Check convergence
         max_change = max(
