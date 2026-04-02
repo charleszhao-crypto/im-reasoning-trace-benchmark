@@ -1,159 +1,171 @@
-# IM-TRACE: Internal Medicine Reasoning Trace Evaluation Benchmark
+# IM-TRACE
 
-**A four-rubric benchmark for evaluating clinical reasoning quality in large language models, with a novel Reasoning Trace Completeness dimension.**
+**Internal Medicine — Trace Reasoning Audit for Clinical Evaluation**
+
+A four-rubric benchmark for evaluating clinical reasoning quality in large language models. Scores not just *what* a model concludes, but *how* it reasons.
 
 [![License: CC BY 4.0](https://img.shields.io/badge/License-CC_BY_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
+[![Tests](https://img.shields.io/badge/tests-34_passing-green.svg)]()
 
 ---
 
-## Why IM-TRACE?
+## The Problem
 
-The ARISE Network's 2026 State of Clinical AI Report (Stanford-Harvard, 500+ studies) found that **95% of clinical AI benchmarks measure accuracy alone**. Standard benchmarks check whether a model gets the right answer — but not whether its reasoning pathway is clinically sound.
+95% of clinical AI benchmarks measure accuracy alone (ARISE 2026, Stanford-Harvard). A model can get the right answer with dangerous reasoning — premature closure, missed differentials, false confidence. Current benchmarks can't distinguish between a correct diagnosis reached through sound clinical logic and one reached through pattern matching that will fail on the next patient.
 
-This matters because:
+## The Solution
 
-- **MonitorBench (March 2026)** showed that chain-of-thought monitorability *decreases* as model capability increases — the most capable models produce reasoning that looks convincing but is less causally connected to outputs
-- **Automated clinical evaluation achieves only 60% agreement** with physician experts (arXiv, January 2026) — a 40% gap that no automated grader can close
-- **FDA CDS guidance (January 2026)** requires that clinical AI enable clinicians to "independently review the basis for the recommendation" — evaluation of reasoning traces is now a regulatory requirement, not just a quality preference
+IM-TRACE evaluates clinical reasoning **process**, not just output:
 
-IM-TRACE addresses this gap with a four-rubric system that evaluates *how* a model reasons about internal medicine cases, not just *what* it concludes.
+| Rubric | Source | What It Measures |
+|--------|--------|------------------|
+| **R1** Factuality | CLEVER | Are the medical facts correct? |
+| **R2** Clinical Relevance | CLEVER | Does it address this specific case? |
+| **R3** Safety-Effectiveness | CSEDB | Is it safe? Does it follow guidelines? |
+| **R4** Reasoning Trace | **Novel** | Is the diagnostic reasoning sound? |
 
----
+### R4: The Novel Contribution
 
-## The Four Rubrics
+Five subscales that no prior benchmark evaluates together:
 
-| Rubric | Source | What It Measures | Scale |
-|--------|--------|------------------|-------|
-| **R1: Factuality** | CLEVER (JMIR AI, Dec 2025) | Accuracy of medical facts against established knowledge | 0-2 |
-| **R2: Clinical Relevance** | CLEVER (JMIR AI, Dec 2025) | Applicability and appropriateness to the clinical scenario | 0-2 |
-| **R3: Safety-Effectiveness** | CSEDB (Nature Digital Medicine, Dec 2025), IM-adapted | 6 safety + 6 effectiveness criteria; safety weighted 2x | 0-2 (composite) |
-| **R4: Reasoning Trace Completeness** | **Novel (this work)** | Quality of the diagnostic reasoning pathway | 0-2 |
+- **DDx Construction** — breadth and prioritization of differential diagnosis
+- **Pre-Test Probability** — calibrated reasoning about disease likelihood
+- **Evidence Integration** — systematic Bayesian updating with clinical data
+- **Diagnostic Closure** — appropriate commitment to a working diagnosis
+- **Epistemic Humility** — honest acknowledgment of uncertainty
 
-### R4: Reasoning Trace Completeness (Novel Contribution)
+**Total score:** R1 + R2 + (R3 x 1.5) + R4 = max **9.0**
 
-R4 evaluates five dimensions of clinical epistemic process:
-
-| Dimension | What It Measures | Score 0 | Score 1 | Score 2 |
-|-----------|------------------|---------|---------|---------|
-| **DDx Construction** | Breadth and prioritization of differential diagnosis | Absent or single diagnosis | Partial list, poor prioritization | Comprehensive, well-prioritized |
-| **Pre-Test Probability** | Calibration of disease likelihood before testing | No probability reasoning | Implicit or poorly calibrated | Explicit, well-calibrated |
-| **Evidence Integration** | How history, exam, and test results narrow the differential | Evidence ignored or misapplied | Partial integration | Systematic Bayesian updating |
-| **Diagnostic Closure** | Appropriate commitment to a working diagnosis | Premature or absent | Reasonable but under-justified | Well-justified with explicit reasoning |
-| **Epistemic Humility** | Acknowledgment of uncertainty and limitations | False confidence | Some acknowledgment | Explicit uncertainty quantification |
-
-**R4 dimension score** = mean of 5 dimension scores (0-2 scale)
-
-**Total IM-TRACE score** = R1 + R2 + (R3 x 1.5) + R4 = **max 9.0**
-
-The 1.5x weight on R3 reflects the primacy of safety in clinical AI evaluation — a factually correct response that misses a critical safety consideration is more dangerous than a slightly inaccurate response that flags uncertainty.
-
----
-
-## Evaluation Modes
-
-### Mode 1: Static Clinical QA
-Single clinical question -> model response -> four-rubric evaluation.
-Best for: benchmarking diagnostic reasoning on standardized cases.
-
-### Mode 2: Multi-Turn Clinical Dialogue
-3-7 turn clinical conversation -> per-turn R4 scoring + final composite.
-Best for: evaluating how reasoning evolves across a clinical encounter.
-
-### Mode 3: Ambient Documentation
-Clinical encounter transcript -> AI-generated SOAP note -> four-rubric evaluation + hallucination detection + ICD-10/CPT coding accuracy.
-Best for: evaluating clinical documentation AI (Ambience, Abridge, Nabla, DeepScribe).
-
----
-
-## Case Corpus
-
-| Layer | Source | Count | Purpose |
-|-------|--------|-------|---------|
-| Seed cases | HealthBench IM/EM extraction | ~100 | Standardized cases with existing physician consensus |
-| Expert annotations | Original physician reasoning traces | 25-50 | Ground-truth reasoning pathways (the irreplaceable contribution) |
-| Adversarial stems | Original construction | 10-15 | Edge cases: undifferentiated fever, multi-morbidity, polypharmacy, atypical presentations |
+Safety is non-compensatory: any R3 safety item scoring 0 caps the total at 4.0.
 
 ---
 
 ## Quick Start
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+pip install pydantic pyyaml
 
-# Score a single model response
-python evaluation/scorer.py --case data/corpus/im_seed_cases.jsonl --response response.json
+# Run the demo benchmark (4 cases, 2 mock models)
+python -m im_trace.run_benchmark
 
-# Run automated grading baseline
-python evaluation/auto_grader.py --cases data/corpus/ --model gpt-4o
+# Run tests
+python -m unittest im_trace.tests.test_pipeline -v
+```
 
-# Compute inter-annotator agreement
-python evaluation/iaa_statistics.py --annotations data/annotations/
+**Output:**
+```
+LEADERBOARD
+Model                 Total    95% CI        R1    R2    R3    R4  Safety
+model-beta             4.59    [4.2, 4.9]   1.0   1.0  1.22  0.95  1 viol
+model-alpha            4.28    [4.0, 4.8]   1.0   1.0  1.11  1.20  3 viol
 
-# Run full benchmark against multiple models
-python baselines/run_benchmark.py --config baselines/model_configs.yaml
+PAIRWISE RANKINGS (Bradley-Terry)
+  #1 model-beta: Elo 1620
+  #2 model-alpha: Elo -2500
 ```
 
 ---
 
-## Repository Structure
+## Architecture
 
 ```
-im-reasoning-trace-benchmark/
-├── README.md                          # This file
-├── LICENSE                            # CC BY 4.0
-├── requirements.txt                   # Python dependencies
-├── data/
-│   ├── corpus/
-│   │   ├── im_seed_cases.jsonl        # HealthBench IM/EM extraction
-│   │   └── original_im_stems.jsonl    # Adversarial edge cases
-│   └── rubrics/
-│       ├── rubrics.py                 # Rubric definitions + scoring logic
-│       └── rubric_guide.md            # Human annotator instructions
-├── evaluation/
-│   ├── scorer.py                      # Single-case four-rubric scorer
-│   ├── auto_grader.py                 # LLM-assisted automated grading
-│   └── iaa_statistics.py              # Inter-annotator agreement (Krippendorff's alpha)
-├── annotation/
-│   ├── annotation_interface.py        # CLI annotation tool
-│   └── annotator_instructions.md      # Detailed scoring guide for physicians
-├── baselines/
-│   ├── run_benchmark.py               # Multi-model benchmark runner
-│   └── model_configs.yaml             # Model API configurations
-├── analysis/
-│   └── figures/                       # Generated plots and tables
-└── paper/
-    └── im_trace_preprint.md           # arXiv preprint draft
+im_trace/
+├── cases/
+│   ├── schema/models.py          # Pydantic data contracts (ClinicalCase, ModelResponse, etc.)
+│   ├── raw/sample_cases.jsonl    # 4 IM cases (STEMI, premature closure, abstention, polypharmacy)
+│   └── processed/                # Stored model responses (JSONL)
+├── rubrics/
+│   └── r4_reasoning_trace/
+│       └── scoring_guide.py      # R4 subscale guides, failure modes, LLM judge prompts
+├── evaluators/
+│   ├── absolute/scorer.py        # Four-rubric scorer with safety cap
+│   ├── pairwise/comparator.py    # Blinded A/B comparisons with randomization
+│   └── aggregation/aggregate.py  # Bootstrap CI, Bradley-Terry, hard-case detection
+├── adapters/
+│   ├── base.py                   # Abstract adapter interface
+│   ├── mock.py                   # Deterministic mock for testing
+│   └── replay.py                 # Replay stored responses from JSONL
+├── tests/test_pipeline.py        # 34 tests covering schemas, scoring, pairwise, E2E
+├── docs/spec.md                  # Design rationale and specification
+├── run_benchmark.py              # End-to-end pipeline orchestrator
+└── results/runs/                 # Benchmark output (leaderboard JSON, annotations JSONL)
 ```
 
 ---
 
-## Citing IM-TRACE
+## Design Principles
+
+**Constraint-based gold standard.** Cases define expected components and forbidden omissions — not a single correct chain of thought. Multiple valid reasoning paths are respected.
+
+**Ordinal scoring.** Raw scores are 0/1/2 (inadequate/partial/complete). Human raters make more consistent ordinal judgments than continuous estimates. Continuous scores can be derived later through psychometric models.
+
+**Judge confidence ≠ model confidence.** Every score carries a judge confidence level (high/medium/low) tracking how certain the *evaluator* is — distinct from how confident the *model claims to be*.
+
+**Dual scoring tracks.** Absolute scoring gives interpretable benchmarks ("7.2/9.0"). Pairwise scoring gives stable rankings. When they diverge, that's signal.
+
+**Replayability.** Stored model responses can be rescored without regeneration. Pairwise events are append-only JSONL so rankings can be refit with different models later.
+
+**Safety is non-compensatory.** A zero on any safety item caps the total at 4.0/9.0. Excellent reasoning cannot offset a missed critical contraindication.
+
+---
+
+## Regulatory Alignment
+
+IM-TRACE maps directly to active regulatory requirements:
+
+| Framework | Criterion | IM-TRACE Rubric |
+|-----------|-----------|-----------------|
+| **FDA CDS 2026** | Criterion 4: HCP can review reasoning basis | R4 (direct mapping) |
+| **FDA CDS 2026** | Criterion 3: non-directive output | R2, R3 |
+| **CHAI/JC RUAIH** | Local validation | R1+R2+R3+R4 |
+| **EU AI Act Art. 9** | Risk identification | R3 |
+
+IM-TRACE provides evaluation coverage that is **necessary but not sufficient** for regulatory compliance. It does not claim to be a compliance certification tool.
+
+---
+
+## Extending IM-TRACE
+
+**Add a new model:** Write an adapter implementing `BaseAdapter.generate()`, or save responses to JSONL and use `ReplayAdapter`.
+
+**Add cases:** Append to `cases/raw/*.jsonl`. Each case is a `ClinicalCase` Pydantic object with constraint-based gold standards.
+
+**LLM-as-judge:** The R4 scoring guide includes structured LLM judge prompts. Use `scoring_guide.make_r4_judge_prompt()` to generate judge prompts, then validate against physician annotations.
+
+**Enterprise integration:** IM-TRACE is designed as a portable rubric standard. See `docs/spec.md` for integration with Microsoft Healthcare AI Model Evaluator, Eleuther AI harness, and Hugging Face.
+
+---
+
+## Related Work
+
+| Benchmark | What It Measures | R4 Coverage |
+|-----------|------------------|-------------|
+| HealthBench (OpenAI, 2025) | Output quality across 7 themes | None |
+| CSEDB (Nature Digital Medicine, 2025) | Safety + effectiveness (30 criteria) | None |
+| CLEVER (JMIR AI, 2025) | Factuality, relevance, conciseness | None |
+| MedR-Bench (Nature Communications, 2025) | Reasoning process quality | Partial — staged task performance, not audit rubric |
+| MedQA / MultiMedQA | Multiple-choice accuracy | None |
+| **IM-TRACE** | **Reasoning process audit** | **5-subscale structured rubric** |
+
+IM-TRACE's positioning: an integrated clinical reasoning trace **audit rubric** for internal medicine, optimized for physician review and regulatory-adjacent auditability. Distinct from benchmarks that measure staged task performance (MedR-Bench) or output quality (HealthBench/CSEDB/CLEVER).
+
+---
+
+## Citation
 
 ```bibtex
 @misc{zhao2026imtrace,
   title={IM-TRACE: A Four-Rubric Reasoning Trace Benchmark for Internal Medicine LLM Evaluation},
   author={Zhao, Charles},
   year={2026},
-  note={Preprint. Available at https://github.com/charleszhao/im-reasoning-trace-benchmark}
+  note={Available at https://github.com/charleszhao-crypto/im-reasoning-trace-benchmark}
 }
 ```
 
 ---
 
-## Related Work
-
-- **CLEVER** (JMIR AI, December 2025): Three-rubric system for clinical LLM evaluation (factuality, relevance, conciseness). IM-TRACE extends CLEVER's R1/R2 with safety-effectiveness (R3) and reasoning trace completeness (R4).
-- **CSEDB** (Nature Digital Medicine, December 2025): Clinical Safety-Effectiveness Dual-Track Benchmark with 2,069 scenarios across 26 specialties. IM-TRACE adapts CSEDB's safety-effectiveness framework for IM-specific evaluation.
-- **HealthBench** (OpenAI, May 2025): 5,000 multi-turn clinical conversations evaluated by 262 physicians. IM-TRACE uses HealthBench as seed corpus and adds reasoning trace evaluation.
-- **MonitorBench** (March 2026): Demonstrates that CoT monitorability decreases with model capability — motivating R4's focus on reasoning trace quality rather than surface fluency.
-- **ARISE Network State of Clinical AI** (January 2026, Stanford-Harvard): "95% of benchmarks measure accuracy alone" — the gap IM-TRACE directly addresses.
-
----
-
 ## Author
 
-**Charles Zhao, MD** — Clinical AI Safety Evaluation | Internal Medicine
-[LinkedIn](https://linkedin.com/in/charleszhao) | [GitHub](https://github.com/charleszhao)
+**Charles Zhao, MD** — Clinical AI Safety Evaluation
 
 *IM-TRACE is an independent physician-led evaluation benchmark. The author has no commercial relationship with any AI system evaluated using this framework.*
